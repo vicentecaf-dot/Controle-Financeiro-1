@@ -38,6 +38,21 @@
 </form>
 </div>
 
+<hr>
+<h3>Importar arquivo (Conta ou Cartão)</h3>
+
+<form method="post" action="/import" enctype="multipart/form-data">
+  <label>Origem:</label>
+  <select name="source" required>
+    <option value="">Selecione...</option>
+    <option value="conta">Conta corrente (Excel)</option>
+    <option value="cartao">Cartão (CSV/Excel)</option>
+  </select>
+
+  <input type="file" name="file" required>
+  <button type="submit">Importar</button>
+</form>
+
 <div class="card">
 <h3>Resumo {{ ym }}</h3>
 <p>Receitas: {{ brl(income) }}</p>
