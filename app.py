@@ -1,3 +1,4 @@
+import unicodedata
 import pandas as pd
 import io
 import re
@@ -30,6 +31,13 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     return conn
 
+def norm_col(s: str) -> str:
+    # remove acentos e padroniza
+    s = str(s).strip().lower()
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+    s = s.replace("\n", " ").replace("\r", " ")
+    s = " ".join(s.split())
+    return s
 
 def init_db():
     conn = get_conn()
@@ -152,7 +160,7 @@ def import_excel():
         return "Nenhum arquivo enviado"
 
     df = pd.read_excel(file)
-
+df.columns = [norm_col(c) for c in df.columns]
     conn = get_conn()
     cur = conn.cursor()
 
@@ -218,7 +226,9 @@ def import_file():
             # Espera algo como: data | lançamento | valor (R$) | ...
             cols = [c.strip().lower() for c in df.columns]
             df.columns = cols
-
+col_date = "data"
+col_desc = "lancamento"   # após normalização, "lançamento" vira "lancamento"
+col_value = "valor (r$)" if "valor (r$)" in df.columns else "valor"
             # tenta achar nomes parecidos
             col_date = "data"
             col_desc = "lançamento" if "lançamento" in cols else "lancamento"
