@@ -6,34 +6,34 @@
 
   <form method="post" action="/add">
     <label>Data (YYYY-MM-DD)</label><br>
-    <input name="competence_date" required><br><br>
+    <input name="competence_date" placeholder="2026-02-22" required><br><br>
 
     <label>Tipo</label><br>
     <select name="type">
       {% for t in types %}
-      <option value="{{t}}">{{t}}</option>
+      <option value="{{ t }}">{{ t }}</option>
       {% endfor %}
     </select><br><br>
 
     <label>Categoria</label><br>
     <select name="category">
       {% for c in categories %}
-      <option value="{{c}}">{{c}}</option>
+      <option value="{{ c }}">{{ c }}</option>
       {% endfor %}
     </select><br><br>
 
     <label>Descrição</label><br>
-    <input name="description" required><br><br>
+    <input name="description" placeholder="Ex: mercado" required style="width: 320px;"><br><br>
 
     <label>Método</label><br>
     <select name="payment_method">
       {% for m in payment_methods %}
-      <option value="{{m}}">{{m}}</option>
+      <option value="{{ m }}">{{ m }}</option>
       {% endfor %}
     </select><br><br>
 
     <label>Valor</label><br>
-    <input name="amount" required><br><br>
+    <input name="amount" placeholder="Ex: 123,45" required><br><br>
 
     <button type="submit">Salvar</button>
   </form>
@@ -41,17 +41,14 @@
   <hr>
 
   <h3>Importar fatura do cartão (CSV Itaú)</h3>
-
   <form method="post" action="/import-card" enctype="multipart/form-data">
     <input type="file" name="file" accept=".csv" required>
     <button type="submit">Importar CSV</button>
   </form>
-
 </div>
 
 <div class="card">
   <h3>Resumo {{ ym }}</h3>
-
   <p><strong>Receitas:</strong> {{ brl(income) }}</p>
   <p><strong>Despesas:</strong> {{ brl(expense) }}</p>
   <p><strong>Saldo:</strong> {{ brl(balance) }}</p>
@@ -60,33 +57,42 @@
 <div class="card">
   <h3>Lançamentos</h3>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Data</th>
-        <th>Tipo</th>
-        <th>Categoria</th>
-        <th>Descrição</th>
-        <th>Método</th>
-        <th style="text-align:right;">Valor</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in txs %}
-      <tr>
-        <td>{{ t["competence_date"] }}</td>
-        <td>{{ t["type"] }}</td>
-        <td>{{ t["category"] }}</td>
-        <td>{{ t["description"] }}</td>
-        <td>{{ t["payment_method"] }}</td>
-        <td style="text-align:right;">
-          {{ brl(t["amount_cents"]) }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% if txs|length == 0 %}
+    <p>Nenhum lançamento neste mês.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Tipo</th>
+          <th>Categoria</th>
+          <th>Descrição</th>
+          <th>Método</th>
+          <th style="text-align:right;">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in txs %}
+        <tr>
+          <td>{{ t["competence_date"] }}</td>
+          <td>{{ t["type"] }}</td>
+          <td>{{ t["category"] }}</td>
+          <td>{{ t["description"] }}</td>
+          <td>{{ t["payment_method"] }}</td>
 
+          <!-- Mostra Despesa como negativo e Receita como positivo -->
+          <td style="text-align:right;">
+            {% if t["type"] == "Despesa" %}
+              {{ brl(-t["amount_cents"]) }}
+            {% else %}
+              {{ brl(t["amount_cents"]) }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
 </div>
 
 {% endblock %}
