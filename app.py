@@ -89,7 +89,48 @@ def brl(cents):
 @app.route("/")
 def home():
     return redirect(url_for("month_view", ym=month_key(date.today())))
+import pandas as pd
 
+@app.route("/import", methods=["POST"])
+def import_excel():
+    file = request.files["file"]
+
+    if not file:
+        return "Nenhum arquivo enviado"
+
+    df = pd.read_excel(file)
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Espera colunas com estes nomes:
+    # Data | Tipo | Categoria | Descrição | Método | Valor
+
+    for _, row in df.iterrows():
+        data = pd.to_datetime(row["Data"]).date()
+        tipo = row["Tipo"]
+        categoria = row["Categoria"]
+        descricao = row["Descrição"]
+        metodo = row["Método"]
+        valor = float(row["Valor"])
+
+        cur.execute("""
+            INSERT INTO transactions
+            (competence_date,type,category,description,payment_method,amount_cents)
+            VALUES (?,?,?,?,?,?)
+        """, (
+            data.isoformat(),
+            tipo,
+            categoria,
+            descricao,
+            metodo,
+            int(valor * 100)
+        ))
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("month_view", ym=month_key(date.today())))
 
 @app.route("/month/<ym>")
 def month_view(ym):
