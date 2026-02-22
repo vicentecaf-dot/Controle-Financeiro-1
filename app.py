@@ -88,6 +88,56 @@ def statement_period(ym):
 def brl(cents):
     return f"R$ {cents/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def parse_brl_to_cents(x) -> int:
+    """
+    Aceita: -100,00 | 17.385,28 | 9.99 | -2741.88 | "R$ -54,00"
+    Retorna centavos (int) com sinal.
+    """
+    if x is None:
+        return 0
+    s = str(x).strip()
+    s = s.replace("R$", "").replace(" ", "")
+
+    # Se vier como "17.385,28" (pt-BR)
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    # Se vier como "100,00"
+    elif "," in s and "." not in s:
+        s = s.replace(",", ".")
+
+    # remove qualquer coisa que não seja número, sinal, ponto
+    s = re.sub(r"[^0-9\.\-]", "", s)
+    if s in ("", "-", "."):
+        return 0
+
+    val = float(s)
+    return int(round(val * 100))
+
+
+def parse_date_flexible(x) -> date:
+    """
+    Aceita: 31/01/2026, 2026-02-05, datetime
+    """
+    if isinstance(x, (datetime, date)):
+        return x if isinstance(x, date) else x.date()
+    s = str(x).strip()
+    # tenta dd/mm/yyyy
+    if "/" in s:
+        return datetime.strptime(s, "%d/%m/%Y").date()
+    # tenta yyyy-mm-dd
+    return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def infer_method_from_desc(desc: str) -> str:
+    d = (desc or "").upper()
+    if "PIX" in d:
+        return "PIX"
+    if "TED" in d or "DOC" in d or "TRANSF" in d or "TRANSFER" in d:
+        return "Transferência"
+    if "BOLETO" in d:
+        return "Boleto"
+    # débito/compra em conta varia muito; deixo como Débito por padrão
+    return "Débito"
 
 @app.route("/")
 def home():
@@ -134,6 +184,138 @@ def import_excel():
     conn.close()
 
     return redirect(url_for("month_view", ym=month_key(date.today())))
+@app.route("/import", methods=["POST"])
+def import_file():
+    file = request.files.get("file")
+    source = request.form.get("source")  # "conta" ou "cartao"
+
+    if not file or file.filename == "":
+        flash("Nenhum arquivo enviado.", "err")
+        return redirect(request.referrer or url_for("home"))
+
+    filename = file.filename.lower()
+
+    # Lê arquivo
+    try:
+        if filename.endswith(".csv"):
+            # detecta separador automaticamente (vírgula / ponto e vírgula)
+            raw = file.read()
+            df = pd.read_csv(io.BytesIO(raw), sep=None, engine="python")
+        else:
+            df = pd.read_excel(file)
+    except Exception as e:
+        flash(f"Erro ao ler arquivo: {e}", "err")
+        return redirect(request.referrer or url_for("home"))
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    imported = 0
+    skipped = 0
+
+    try:
+        if source == "conta":
+            # Espera algo como: data | lançamento | valor (R$) | ...
+            cols = [c.strip().lower() for c in df.columns]
+            df.columns = cols
+
+            # tenta achar nomes parecidos
+            col_date = "data"
+            col_desc = "lançamento" if "lançamento" in cols else "lancamento"
+            col_value = "valor (r$)" if "valor (r$)" in cols else "valor"
+
+            if col_date not in cols or col_desc not in cols or col_value not in cols:
+                flash("Não encontrei colunas esperadas no extrato da conta (data, lançamento, valor).", "err")
+                conn.close()
+                return redirect(url_for("home"))
+
+            for _, r in df.iterrows():
+                desc = str(r.get(col_desc, "")).strip()
+
+                # pula saldo anterior e linhas vazias
+                if not desc or "SALDO ANTERIOR" in desc.upper():
+                    skipped += 1
+                    continue
+
+                d = parse_date_flexible(r.get(col_date))
+                cents = parse_brl_to_cents(r.get(col_value))
+
+                if cents == 0:
+                    skipped += 1
+                    continue
+
+                ttype = "Receita" if cents > 0 else "Despesa"
+                method = infer_method_from_desc(desc)
+                category = "Outros"
+
+                cur.execute("""
+                    INSERT INTO transactions(competence_date, type, category, description, payment_method, amount_cents)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (d.isoformat(), ttype, category, desc, method, abs(cents)))
+
+                imported += 1
+
+            conn.commit()
+            conn.close()
+            flash(f"Importação conta concluída ✅ ({imported} lançamentos, {skipped} ignorados)", "ok")
+            return redirect(url_for("month_view", ym=month_key(date.today())))
+
+        elif source == "cartao":
+            # Espera colunas: data, lançamento, valor (ou exatamente data,lançamento,valor)
+            cols = [c.strip().lower() for c in df.columns]
+            df.columns = cols
+
+            col_date = "data"
+            col_desc = "lançamento" if "lançamento" in cols else "lancamento"
+            col_value = "valor"
+
+            if col_date not in cols or col_desc not in cols or col_value not in cols:
+                flash("Não encontrei colunas esperadas na fatura do cartão (data, lançamento, valor).", "err")
+                conn.close()
+                return redirect(url_for("home"))
+
+            for _, r in df.iterrows():
+                desc = str(r.get(col_desc, "")).strip()
+                if not desc:
+                    skipped += 1
+                    continue
+
+                d = parse_date_flexible(r.get(col_date))
+                cents = parse_brl_to_cents(r.get(col_value))
+
+                if cents == 0:
+                    skipped += 1
+                    continue
+
+                # na fatura, geralmente compra vem positiva; pagamento pode vir negativo.
+                # regra: se for negativo, tratamos como Receita (pagamento/estorno). Se positivo, Despesa.
+                ttype = "Receita" if cents < 0 else "Despesa"
+
+                method = "Cartão"
+                category = "Outros"
+
+                cur.execute("""
+                    INSERT INTO transactions(competence_date, type, category, description, payment_method, amount_cents)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (d.isoformat(), ttype, category, desc, method, abs(cents)))
+
+                imported += 1
+
+            conn.commit()
+            conn.close()
+            flash(f"Importação cartão concluída ✅ ({imported} lançamentos, {skipped} ignorados)", "ok")
+            return redirect(url_for("month_view", ym=month_key(date.today())))
+
+        else:
+            conn.close()
+            flash("Selecione a origem correta (Conta ou Cartão).", "err")
+            return redirect(url_for("home"))
+
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        flash(f"Erro importando: {e}", "err")
+        return redirect(url_for("home"))
 
 @app.route("/month/<ym>")
 def month_view(ym):
