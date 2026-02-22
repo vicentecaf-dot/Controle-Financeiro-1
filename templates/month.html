@@ -2,79 +2,91 @@
 {% block content %}
 
 <div class="card">
-<h3>Novo lançamento</h3>
+  <h3>Novo lançamento</h3>
+
+  <form method="post" action="/add">
+    <label>Data (YYYY-MM-DD)</label><br>
+    <input name="competence_date" required><br><br>
+
+    <label>Tipo</label><br>
+    <select name="type">
+      {% for t in types %}
+      <option value="{{t}}">{{t}}</option>
+      {% endfor %}
+    </select><br><br>
+
+    <label>Categoria</label><br>
+    <select name="category">
+      {% for c in categories %}
+      <option value="{{c}}">{{c}}</option>
+      {% endfor %}
+    </select><br><br>
+
+    <label>Descrição</label><br>
+    <input name="description" required><br><br>
+
+    <label>Método</label><br>
+    <select name="payment_method">
+      {% for m in payment_methods %}
+      <option value="{{m}}">{{m}}</option>
+      {% endfor %}
+    </select><br><br>
+
+    <label>Valor</label><br>
+    <input name="amount" required><br><br>
+
+    <button type="submit">Salvar</button>
+  </form>
+
   <hr>
-<h3>Importar Excel</h3>
-<form method="post" action="/import" enctype="multipart/form-data">
-  <input type="file" name="file" required>
-  <button>Importar</button>
-</form>
-<form method="post" action="/add">
-<input name="competence_date" placeholder="YYYY-MM-DD" required><br><br>
 
-<select name="type">
-{% for t in types %}
-<option>{{t}}</option>
-{% endfor %}
-</select><br><br>
+  <h3>Importar fatura do cartão (CSV Itaú)</h3>
 
-<select name="category">
-{% for c in categories %}
-<option>{{c}}</option>
-{% endfor %}
-</select><br><br>
+  <form method="post" action="/import-card" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv" required>
+    <button type="submit">Importar CSV</button>
+  </form>
 
-<input name="description" placeholder="Descrição" required><br><br>
-
-<select name="payment_method">
-{% for m in payment_methods %}
-<option>{{m}}</option>
-{% endfor %}
-</select><br><br>
-
-<input name="amount" placeholder="Valor" required><br><br>
-
-<button>Salvar</button>
-</form>
-</div>
-
-<hr>
-<h3>Importar arquivo (Conta ou Cartão)</h3>
-
-<form method="post" action="/import" enctype="multipart/form-data">
-  <label>Origem:</label>
-  <select name="source" required>
-    <option value="">Selecione...</option>
-    <option value="conta">Conta corrente (Excel)</option>
-    <option value="cartao">Cartão (CSV/Excel)</option>
-  </select>
-
-  <input type="file" name="file" required>
-  <button type="submit">Importar</button>
-</form>
-
-<div class="card">
-<h3>Resumo {{ ym }}</h3>
-<p>Receitas: {{ brl(income) }}</p>
-<p>Despesas: {{ brl(expense) }}</p>
-<p>Saldo: {{ brl(balance) }}</p>
 </div>
 
 <div class="card">
-<h3>Lançamentos</h3>
-<table>
-<tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Desc</th><th>Método</th><th class="right">Valor</th></tr>
-{% for t in txs %}
-<tr>
-<td>{{t["competence_date"]}}</td>
-<td>{{t["type"]}}</td>
-<td>{{t["category"]}}</td>
-<td>{{t["description"]}}</td>
-<td>{{t["payment_method"]}}</td>
-<td class="right">{{ brl(t["amount_cents"]) }}</td>
-</tr>
-{% endfor %}
-</table>
+  <h3>Resumo {{ ym }}</h3>
+
+  <p><strong>Receitas:</strong> {{ brl(income) }}</p>
+  <p><strong>Despesas:</strong> {{ brl(expense) }}</p>
+  <p><strong>Saldo:</strong> {{ brl(balance) }}</p>
+</div>
+
+<div class="card">
+  <h3>Lançamentos</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Tipo</th>
+        <th>Categoria</th>
+        <th>Descrição</th>
+        <th>Método</th>
+        <th style="text-align:right;">Valor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in txs %}
+      <tr>
+        <td>{{ t["competence_date"] }}</td>
+        <td>{{ t["type"] }}</td>
+        <td>{{ t["category"] }}</td>
+        <td>{{ t["description"] }}</td>
+        <td>{{ t["payment_method"] }}</td>
+        <td style="text-align:right;">
+          {{ brl(t["amount_cents"]) }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
 </div>
 
 {% endblock %}
